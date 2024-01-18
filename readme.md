@@ -96,4 +96,6 @@ Very open to any ideas on how to enable trusted one-way connections. Please open
 NOTE - we can copy the `main.wasm` into the `src/dist` too if we are not using `parcel` like for `python` it'll but for `parcel` you have to put it inside the `src/dist/dist` as when the `parcel serve` create `dist` and look everything which is inside of the folder. 
 8. If you need to serve it using something else you can do it.
 
+### NOTE - It works only in chromium based browser, in firefox it is not able to established connection.
+
 ENJOY !!!!
