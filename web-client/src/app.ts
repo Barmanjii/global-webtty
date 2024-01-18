@@ -30,6 +30,9 @@ function waitForDecode() {
 }
 
 const go = new Go();
+// It will not work with the parcel = 1.12.5 
+// When you try to run the index.html from the parcel build it takes the WASM as a html not the application/wasm or wasm 
+// git issue -> https://github.com/parcel-bundler/parcel/issues/4867 (Vijay Barman 18th Jan 2024)
 WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject).then(
   result => {
     let mod = result.module;

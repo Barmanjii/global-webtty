@@ -83,3 +83,17 @@ I think this somewhat violates the spirit of this tool because it relies on a th
 SDP descriptions are encrypted when uploaded and encryption keys are shared with the connection data to decrypt. So presumably the service being compromised is not problematic.
 
 Very open to any ideas on how to enable trusted one-way connections. Please open an issue or reach out if you have thoughts. For now, the `-o` flag will print a warning and link to this explanation.
+
+
+### If you want to use the client site webtty instance, you can just make the web-bundle using the parcel or whatever and use/host/serve it as you want.
+1. Head inside the `web-client` or `web-client/src` so you can use `npm run <command>` which is already listed inside the `package.json`.
+2. First install the parcel, I recommend using the old one otherwise you'll end up in a npm dependencies hell hole so just use this `npm install -g parcel-bundler` if this doesn't work, then use this `npm install` and then use that command again.
+3. Now use the `npm run build` or `npm run go-build` we just want the `main.wasm` file so, choose any of them or run both, it'll not make any changes.
+4. Head into the `web-client/src` directory and then use `parcel build index.html` it will create a new directory called `dist` inside of your `src` which have the `js`,`css`,`.map` & `index.html`.
+5. Now you have the main juice. `cd` into `dist` and then use `parcel serve index.html`. It'll again create another directory called `dist` inside the existing `dist` so don't worry about it okay. we are not messing it up. And now we don't have to change the directory so just stay in the `/web-client/src/dist`
+6. Now you can see `parcel has successfully served` your index.html code to web.![Served](image.png)
+7. But if you try to vist the `localhost:1234` and put the `TOKEN` it'll not work because we don't have the `main.wasm`. If you check the Network developer too, it does say it is loaded but as a HTML/Text but we want it as a WASM. so you remember in the step 3 we created the `main.wasm`. you can find it inside of `web-client/dist` copy it and paste it inside of `web-client/src/dist/dist` the second `dist` inside of src. and wallahhhh now you can verify the `TOKEN` too.
+NOTE - we can copy the `main.wasm` into the `src/dist` too if we are not using `parcel` like for `python` it'll but for `parcel` you have to put it inside the `src/dist/dist` as when the `parcel serve` create `dist` and look everything which is inside of the folder. 
+8. If you need to serve it using something else you can do it.
+
+ENJOY !!!!
