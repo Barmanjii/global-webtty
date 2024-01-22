@@ -1,7 +1,12 @@
 package main
 
-// Host token, Updated from the host.go
-var HostToken string
+var (
+	// HostToken - Updated from the host.go
+	HostToken string
 
-// Client token, fetch from the ZMQ Server and use it in the client.go
-var ClientToken string
+	// ClientToken - Fetch from the ZMQ Server and use it, to establish the connection
+	ClientToken string
+
+	// ClientTokenUpdateChan - Channel to notify about ClientToken updates
+	ClientTokenUpdateChan = make(chan bool, 1)
+)

@@ -29,10 +29,10 @@ function waitForDecode() {
   }
 }
 
-const go = new Go();
 // It will not work direclty because of the parcel = 1.12.5 
 // When you try to run the index.html from the parcel build it takes the WASM as a html not the application/wasm or wasm 
 // git issue -> https://github.com/parcel-bundler/parcel/issues/4867 (Vijay Barman 18th Jan 2024)
+const go = new Go();
 WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject).then(
   result => {
     let mod = result.module;
@@ -40,6 +40,11 @@ WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject).then(
     go.run(inst);
   }
 );
+
+// Custom Sleep function
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 const create10kbFile = (path: string, body: string): void =>
   fetch("https://up.10kb.site/" + path, {
@@ -49,8 +54,10 @@ const create10kbFile = (path: string, body: string): void =>
     .then(resp => resp.text())
     .then(resp => {});
 
-const startSession = (data: string) => {
-  decode(data, (Sdp, tenKbSiteLoc, err) => {
+
+const startSession = async (data: string) => {
+  await sleep(3000);
+  decode(data, (Sdp: any, tenKbSiteLoc: string, err: string) => {
     if (err != "") {
       console.log(err);
     }
@@ -72,7 +79,7 @@ const startSession = (data: string) => {
   });
 };
 
-let TenKbSiteLoc = null;
+let TenKbSiteLoc: string | null = null;
 
 const term = new Terminal();
 term.open(document.getElementById("terminal"));
@@ -91,7 +98,7 @@ let pc = new RTCPeerConnection({
   ]
 });
 
-let log = msg => {
+let log = (msg: string) => {
   term.write(msg + "\n\r");
 };
 
@@ -111,17 +118,23 @@ pc.onicecandidate = event => {
   if (event.candidate === null) {
     if (TenKbSiteLoc == null) {
       term.write(
-        "Answer created. Send the following answer to the host:\n\r\n\r"
+        "Answer created. Send the following answer to the host:\n\r"
       );
-      encode(pc.localDescription.sdp, (encoded, err) => {
+      encode(pc.localDescription.sdp, async (encoded: string, err: string) => {
         if (err != "") {
           console.log(err);
         }
-        term.write(encoded);
+        try {
+          await sendDataToAPI(encoded);
+          term.write("Successfully sent the client token to the Backend Server");
+        }catch (err){
+          term.write(`Couldn't sent the Client token to the Backend Server - ${err}`)
+        }
+        // term.write(encoded);
       });
     } else {
       term.write("Waiting for connection...");
-      encode(pc.localDescription.sdp, (encoded, err) => {
+      encode(pc.localDescription.sdp, (encoded: string, err: string) => {
         if (err != "") {
           console.log(err);
         }
@@ -144,7 +157,6 @@ window.sendMessage = () => {
 
 let firstInput: boolean = false;
 const urlData = window.location.hash.substr(1);
-console.log(urlData);
 if (urlData != "") {
   try {
     waitForDecode();
@@ -158,17 +170,69 @@ if (firstInput == false) {
   term.write("Run webtty and paste the offer message below:\n\r");
 }
 
-term.on("data", data => {
-  if (!firstInput) {
-    term.reset();
-    try {
-      startSession(data);
-    } catch (err) {
-      console.log(err);
-      term.write(`There was an error with the offer: ${data}\n\r`);
-      term.write("Try entering the message again: ");
-      return;
+const baseURL = "http://192.168.0.104:2323/"
+let MACHINE_ID = "SD0451011"
+let USER_ID = "018d0c41-7970-6e22-8de6-df7ba36a38ff"
+
+async function sendDataToAPI(clientToken : string): Promise<any> {
+  try {
+    const response = await fetch(baseURL + `client_token?machine_id=${MACHINE_ID}&client_token=${clientToken}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+    });
+
+    if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
     }
-    firstInput = true;
+
+    const client_token = await response.json();
+    return client_token; // Return the whole response data
+} catch (error) {
+    console.error("Error sending data:", error);
+    throw error;
+}
+}
+
+async function getDataFromAPI(): Promise<any> {
+  try {
+      const response = await fetch(baseURL + `host_token?machine_id=${MACHINE_ID}&user_id=${USER_ID}`);
+      if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const host_token = await response.json();
+      return host_token;
+  } catch (error) {
+      console.error("Error fetching data:", error);
+      throw error; 
   }
-});
+}
+
+async function initiateSessionWithAPIData() {
+  try {
+      const apiData = await getDataFromAPI();
+      startSession(apiData);
+  } catch (err:any) {
+          console.error("Error encountered:", err);
+          term.write("Failed to start session with API data. Please try again.\n\r");
+          term.write(`Error details: ${err.message}\n\r`);
+  }
+}
+
+initiateSessionWithAPIData();
+
+// term.on("data", async data => {
+//   if (!firstInput) {
+//     term.reset();
+//     try {
+//       startSession(data);
+//     } catch (err) {
+//       console.log(err);
+//       term.write(`There was an error with the offer: ${data}\n\r`);
+//       term.write("Try entering the message again: ");
+//       return;
+//     }
+//     firstInput = true;
+//   }
+// });

@@ -171,9 +171,10 @@ func (hs *hostSession) onDataChannel() func(dc *webrtc.DataChannel) {
 }
 
 func (hs *hostSession) mustReadStdin() (string, error) {
-	var input string
-	fmt.Scanln(&input)
-	sd, err := sd.Decode(input)
+	// var input string
+	// fmt.Scanln(&input)
+	<-ClientTokenUpdateChan // This will block until there's a value in the channel
+	sd, err := sd.Decode(ClientToken)
 	return sd.Sdp, err
 }
 
@@ -240,10 +241,6 @@ func (hs *hostSession) run() (err error) {
 		"\n[bold]Or in a browser: [reset]https://maxmcd.github.io/webtty/\n\n")
 	if hs.oneWay == false {
 		colorstring.Println("[bold]When you have the answer, paste it below and hit enter:")
-		// check this only when we are expecting the client token
-		time.Sleep(time.Duration(5) * time.Second) // % seconds sleep so the Client Token can be updated and we can use it here
-		fmt.Printf("%s\n", ClientToken)
-
 		// Wait for the answer to be pasted
 		hs.answer.Sdp, err = hs.mustReadStdin()
 		if err != nil {

@@ -18,7 +18,7 @@ type Message struct {
 }
 
 // startZMQServer starts the ZeroMQ server
-// Using PAIR
+// Using PAIR to connect with the ZMQ Client
 
 func startZMQServer() {
 	zmq_context, error := zmq.NewContext()
@@ -48,7 +48,7 @@ func startZMQServer() {
 		}
 		if token_value.Client_Token != "" {
 			ClientToken = token_value.Client_Token
-			log.Print(ClientToken)
+			updateClientToken(ClientToken)
 		}
 		break
 	}
@@ -106,4 +106,9 @@ func main() {
 	if err != nil {
 		fmt.Printf("Quitting with an unexpected error: \"%s\"\n", err)
 	}
+}
+
+func updateClientToken(newToken string) {
+	ClientToken = newToken
+	ClientTokenUpdateChan <- true // Signal that the token has been updated
 }
