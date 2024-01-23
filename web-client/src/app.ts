@@ -9,218 +9,219 @@ import "xterm/dist/addons/fullscreen/fullscreen.css";
 // imports "Go"
 import "./wasm_exec.js";
 
-Terminal.applyAddon(attach);
-Terminal.applyAddon(fullscreen);
-Terminal.applyAddon(fit);
+function testRun(name: string) {
+  console.log(`hello ${name}`)
+}
 
-// Polyfill for WebAssembly on Safari
-if (!WebAssembly.instantiateStreaming) {
-  WebAssembly.instantiateStreaming = async (resp, importObject) => {
-    const source = await (await resp).arrayBuffer();
-    return await WebAssembly.instantiate(source, importObject);
+function mainRun(baseURL: string, machienId: string, userId: string) {
+  Terminal.applyAddon(attach);
+  Terminal.applyAddon(fullscreen);
+  Terminal.applyAddon(fit);
+  // Polyfill for WebAssembly on Safari
+  if (!WebAssembly.instantiateStreaming) {
+    WebAssembly.instantiateStreaming = async (resp, importObject) => {
+      const source = await (await resp).arrayBuffer();
+      return await WebAssembly.instantiate(source, importObject);
+    };
+  }
+
+  function waitForDecode() {
+    if (typeof decode !== "undefined") {
+      startSession(urlData);
+    } else {
+      setTimeout(waitForDecode, 250);
+    }
+  }
+
+  // It will not work direclty because of the parcel = 1.12.5 
+  // When you try to run the index.html from the parcel build it takes the WASM as a html not the application/wasm or wasm 
+  // git issue -> https://github.com/parcel-bundler/parcel/issues/4867 (Vijay Barman 18th Jan 2024)
+  const go = new Go();
+  WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject).then(
+    result => {
+      let mod = result.module;
+      let inst = result.instance;
+      go.run(inst);
+    }
+  );
+
+  // Custom Sleep function
+  function sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  const create10kbFile = (path: string, body: string): void =>
+    fetch("https://up.10kb.site/" + path, {
+      method: "POST",
+      body: body
+    })
+      .then(resp => resp.text())
+      .then(resp => { });
+
+
+  const startSession = async (data: string) => {
+    await sleep(3000);
+    decode(data, (Sdp: any, tenKbSiteLoc: string, err: string) => {
+      if (err != "") {
+        console.log(err);
+      }
+      if (tenKbSiteLoc != "") {
+        TenKbSiteLoc = tenKbSiteLoc;
+      }
+      pc
+        .setRemoteDescription(
+          new RTCSessionDescription({
+            type: "offer",
+            sdp: Sdp
+          })
+        )
+        .catch(log);
+      pc
+        .createAnswer()
+        .then(d => pc.setLocalDescription(d))
+        .catch(log);
+    });
   };
-}
 
-function waitForDecode() {
-  if(typeof decode !== "undefined"){
-    startSession(urlData);
-  } else {
-    setTimeout(waitForDecode, 250);
-  }
-}
+  let TenKbSiteLoc: string | null = null;
 
-// It will not work direclty because of the parcel = 1.12.5 
-// When you try to run the index.html from the parcel build it takes the WASM as a html not the application/wasm or wasm 
-// git issue -> https://github.com/parcel-bundler/parcel/issues/4867 (Vijay Barman 18th Jan 2024)
-const go = new Go();
-WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject).then(
-  result => {
-    let mod = result.module;
-    let inst = result.instance;
-    go.run(inst);
-  }
-);
+  const term = new Terminal();
+  term.open(document.getElementById("terminal"));
+  term.toggleFullScreen();
+  term.fit();
+  window.onresize = () => {
+    term.fit();
+  };
+  term.write("Welcome to the WebTTY web client.\n\r");
 
-// Custom Sleep function
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
+  let pc = new RTCPeerConnection({
+    iceServers: [
+      {
+        urls: "stun:stun.l.google.com:19302"
+      }
+    ]
+  });
 
-const create10kbFile = (path: string, body: string): void =>
-  fetch("https://up.10kb.site/" + path, {
-    method: "POST",
-    body: body
-  })
-    .then(resp => resp.text())
-    .then(resp => {});
+  let log = (msg: string) => {
+    term.write(msg + "\n\r");
+  };
 
+  let sendChannel = pc.createDataChannel("data");
+  sendChannel.onclose = () => console.log("sendChannel has closed");
+  sendChannel.onopen = () => {
+    term.reset();
+    term.terminadoAttach(sendChannel);
+    sendChannel.send(JSON.stringify(["set_size", term.rows, term.cols]));
+    console.log("sendChannel has opened");
+  };
+  // sendChannel.onmessage = e => {}
 
-const startSession = async (data: string) => {
-  await sleep(3000);
-  decode(data, (Sdp: any, tenKbSiteLoc: string, err: string) => {
-    if (err != "") {
+  pc.onsignalingstatechange = e => log(pc.signalingState);
+  pc.oniceconnectionstatechange = e => log(pc.iceConnectionState);
+  pc.onicecandidate = event => {
+    if (event.candidate === null) {
+      if (TenKbSiteLoc == null) {
+        term.write(
+          "Answer created. Send the following answer to the host:\n\r"
+        );
+        encode(pc.localDescription.sdp, async (encoded: string, err: string) => {
+          if (err != "") {
+            console.log(err);
+          }
+          try {
+            await sendDataToAPI(encoded);
+            term.write("Successfully sent the client token to the Backend Server");
+          } catch (err) {
+            term.write(`Couldn't sent the Client token to the Backend Server - ${err}`)
+          }
+          // term.write(encoded);
+        });
+      } else {
+        term.write("Waiting for connection...");
+        encode(pc.localDescription.sdp, (encoded: string, err: string) => {
+          if (err != "") {
+            console.log(err);
+          }
+          create10kbFile(TenKbSiteLoc, encoded);
+        });
+      }
+    }
+  };
+
+  pc.onnegotiationneeded = e => console.log(e);
+
+  window.sendMessage = () => {
+    let message = document.getElementById("message").value;
+    if (message === "") {
+      return alert("Message must not be empty");
+    }
+
+    sendChannel.send(message);
+  };
+
+  let firstInput: boolean = false;
+  const urlData = window.location.hash.substr(1);
+  if (urlData != "") {
+    try {
+      waitForDecode();
+      firstInput = true;
+    } catch (err) {
       console.log(err);
     }
-    if (tenKbSiteLoc != "") {
-      TenKbSiteLoc = tenKbSiteLoc;
-    }
-    pc
-      .setRemoteDescription(
-        new RTCSessionDescription({
-          type: "offer",
-          sdp: Sdp
-        })
-      )
-      .catch(log);
-    pc
-      .createAnswer()
-      .then(d => pc.setLocalDescription(d))
-      .catch(log);
-  });
-};
-
-let TenKbSiteLoc: string | null = null;
-
-const term = new Terminal();
-term.open(document.getElementById("terminal"));
-term.toggleFullScreen();
-term.fit();
-window.onresize = () => {
-  term.fit();
-};
-term.write("Welcome to the WebTTY web client.\n\r");
-
-let pc = new RTCPeerConnection({
-  iceServers: [
-    {
-      urls: "stun:stun.l.google.com:19302"
-    }
-  ]
-});
-
-let log = (msg: string) => {
-  term.write(msg + "\n\r");
-};
-
-let sendChannel = pc.createDataChannel("data");
-sendChannel.onclose = () => console.log("sendChannel has closed");
-sendChannel.onopen = () => {
-  term.reset();
-  term.terminadoAttach(sendChannel);
-  sendChannel.send(JSON.stringify(["set_size", term.rows, term.cols]));
-  console.log("sendChannel has opened");
-};
-// sendChannel.onmessage = e => {}
-
-pc.onsignalingstatechange = e => log(pc.signalingState);
-pc.oniceconnectionstatechange = e => log(pc.iceConnectionState);
-pc.onicecandidate = event => {
-  if (event.candidate === null) {
-    if (TenKbSiteLoc == null) {
-      term.write(
-        "Answer created. Send the following answer to the host:\n\r"
-      );
-      encode(pc.localDescription.sdp, async (encoded: string, err: string) => {
-        if (err != "") {
-          console.log(err);
-        }
-        try {
-          await sendDataToAPI(encoded);
-          term.write("Successfully sent the client token to the Backend Server");
-        }catch (err){
-          term.write(`Couldn't sent the Client token to the Backend Server - ${err}`)
-        }
-        // term.write(encoded);
-      });
-    } else {
-      term.write("Waiting for connection...");
-      encode(pc.localDescription.sdp, (encoded: string, err: string) => {
-        if (err != "") {
-          console.log(err);
-        }
-        create10kbFile(TenKbSiteLoc, encoded);
-      });
-    }
-  }
-};
-
-pc.onnegotiationneeded = e => console.log(e);
-
-window.sendMessage = () => {
-  let message = document.getElementById("message").value;
-  if (message === "") {
-    return alert("Message must not be empty");
   }
 
-  sendChannel.send(message);
-};
-
-let firstInput: boolean = false;
-const urlData = window.location.hash.substr(1);
-if (urlData != "") {
-  try {
-    waitForDecode();
-    firstInput = true;
-  } catch (err) {
-    console.log(err);
+  if (firstInput == false) {
+    term.write("Run webtty and paste the offer message below:\n\r");
   }
-}
 
-if (firstInput == false) {
-  term.write("Run webtty and paste the offer message below:\n\r");
-}
-
-const baseURL = "http://192.168.0.104:2323/"
-let MACHINE_ID = "SD0451011"
-let USER_ID = "018d0c41-7970-6e22-8de6-df7ba36a38ff"
-
-async function sendDataToAPI(clientToken : string): Promise<any> {
-  try {
-    const response = await fetch(baseURL + `client_token?machine_id=${MACHINE_ID}&client_token=${clientToken}`, {
+  async function sendDataToAPI(clientToken: string): Promise<any> {
+    try {
+      const response = await fetch(baseURL + `client_token?machine_id=${machienId}&client_token=${clientToken}`, {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json'
+          'Content-Type': 'application/json'
         },
-    });
+      });
 
-    if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const client_token = await response.json();
-    return client_token; // Return the whole response data
-} catch (error) {
-    console.error("Error sending data:", error);
-    throw error;
-}
-}
-
-async function getDataFromAPI(): Promise<any> {
-  try {
-      const response = await fetch(baseURL + `host_token?machine_id=${MACHINE_ID}&user_id=${USER_ID}`);
       if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const client_token = await response.json();
+      return client_token; // Return the whole response data
+    } catch (error) {
+      console.error("Error sending data:", error);
+      throw error;
+    }
+  }
+
+  async function getDataFromAPI(): Promise<any> {
+    try {
+      const response = await fetch(baseURL + `host_token?machine_id=${machienId}&user_id=${userId}`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
       const host_token = await response.json();
       return host_token;
-  } catch (error) {
+    } catch (error) {
       console.error("Error fetching data:", error);
-      throw error; 
+      throw error;
+    }
   }
-}
 
-async function initiateSessionWithAPIData() {
-  try {
+  async function initiateSessionWithAPIData() {
+    try {
       const apiData = await getDataFromAPI();
       startSession(apiData);
-  } catch (err:any) {
-          console.error("Error encountered:", err);
-          term.write("Failed to start session with API data. Please try again.\n\r");
-          term.write(`Error details: ${err.message}\n\r`);
+    } catch (err: any) {
+      console.error("Error encountered:", err);
+      term.write("Failed to start session with API data. Please try again.\n\r");
+      term.write(`Error details: ${err.message}\n\r`);
+    }
   }
-}
 
-initiateSessionWithAPIData();
+  initiateSessionWithAPIData();
+}
 
 // term.on("data", async data => {
 //   if (!firstInput) {
@@ -236,3 +237,6 @@ initiateSessionWithAPIData();
 //     firstInput = true;
 //   }
 // });
+
+
+// mainRun("http://localhost:2323/", "SD0451011", "vijay-barman")
