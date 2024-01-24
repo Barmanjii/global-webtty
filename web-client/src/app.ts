@@ -9,11 +9,13 @@ import "xterm/dist/addons/fullscreen/fullscreen.css";
 // imports "Go"
 import "./wasm_exec.js";
 
-function testRun(name: string) {
-  console.log(`hello ${name}`)
+declare global {
+  interface Window {
+    mainRun: (baseURL: string, machienId: string, userId: string) => void;
+  }
 }
 
-function mainRun(baseURL: string, machienId: string, userId: string) {
+window.mainRun = (baseURL: string, machienId: string, userId: string) => {
   Terminal.applyAddon(attach);
   Terminal.applyAddon(fullscreen);
   Terminal.applyAddon(fit);
@@ -239,4 +241,5 @@ function mainRun(baseURL: string, machienId: string, userId: string) {
 // });
 
 
-// mainRun("http://localhost:2323/", "SD0451011", "vijay-barman")
+mainRun("http://localhost:2323/", "SD0451011", "vijay-barman")
+
