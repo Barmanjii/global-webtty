@@ -11,11 +11,11 @@ import "./wasm_exec.js";
 
 declare global {
   interface Window {
-    mainRun: (baseURL: string, machienId: string, userId: string) => void;
+    mainRun: (baseURL: string, machineId: string, userId: string) => void;
   }
 }
 
-window.mainRun = (baseURL: string, machienId: string, userId: string) => {
+window.mainRun = (baseURL: string, machineId: string, userId: string) => {
   Terminal.applyAddon(attach);
   Terminal.applyAddon(fullscreen);
   Terminal.applyAddon(fit);
@@ -94,7 +94,7 @@ window.mainRun = (baseURL: string, machienId: string, userId: string) => {
   window.onresize = () => {
     term.fit();
   };
-  term.write("Welcome to the WebTTY web client.\n\r");
+  term.write("Welcome to the Peppermint(WebTTY) web client.\n\r");
 
   let pc = new RTCPeerConnection({
     iceServers: [
@@ -173,12 +173,12 @@ window.mainRun = (baseURL: string, machienId: string, userId: string) => {
   }
 
   if (firstInput == false) {
-    term.write("Run webtty and paste the offer message below:\n\r");
+    term.write(`Tryiny to connect the ${machineId}.\n\r`);
   }
 
   async function sendDataToAPI(clientToken: string): Promise<any> {
     try {
-      const response = await fetch(baseURL + `client_token?machine_id=${machienId}&client_token=${clientToken}`, {
+      const response = await fetch(baseURL + `client_token?machine_id=${machineId}&client_token=${clientToken}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -199,12 +199,12 @@ window.mainRun = (baseURL: string, machienId: string, userId: string) => {
 
   async function getDataFromAPI(): Promise<any> {
     try {
-      const response = await fetch(baseURL + `host_token?machine_id=${machienId}&user_id=${userId}`);
+      const response = await fetch(baseURL + `host_token?machine_id=${machineId}&user_id=${userId}`);
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      const host_token = await response.json();
-      return host_token;
+      const data = await response.json();
+      return data
     } catch (error) {
       console.error("Error fetching data:", error);
       throw error;
@@ -213,12 +213,16 @@ window.mainRun = (baseURL: string, machienId: string, userId: string) => {
 
   async function initiateSessionWithAPIData() {
     try {
-      const apiData = await getDataFromAPI();
-      startSession(apiData);
+      const data = await getDataFromAPI();
+      if ("host_token" in data) {
+        let host_token = data.host_token
+        startSession(host_token);
+      } else {
+        term.write(JSON.stringify(data))
+      }
+
     } catch (err: any) {
-      console.error("Error encountered:", err);
-      term.write("Failed to start session with API data. Please try again.\n\r");
-      term.write(`Error details: ${err.message}\n\r`);
+      term.write("Server is down. Please try again later!!!! \n\r");
     }
   }
 
@@ -241,5 +245,5 @@ window.mainRun = (baseURL: string, machienId: string, userId: string) => {
 // });
 
 
-mainRun("http://localhost:2323/", "SD0451011", "vijay-barman")
+// mainRun("http://localhost:2323/", "SD0451011", "vijay-barman")
 
