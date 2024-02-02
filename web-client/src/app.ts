@@ -27,18 +27,9 @@ window.mainRun = (baseURL: string, machineId: string, userId: string) => {
     };
   }
 
-  function waitForDecode() {
-    if (typeof decode !== "undefined") {
-      startSession(urlData);
-    } else {
-      setTimeout(waitForDecode, 250);
-    }
-  }
-
-  // It will not work direclty because of the parcel = 1.12.5 
-  // When you try to run the index.html from the parcel build it takes the WASM as a html not the application/wasm or wasm 
-  // git issue -> https://github.com/parcel-bundler/parcel/issues/4867 (Vijay Barman 18th Jan 2024)
   const go = new Go();
+
+  // main.wasm contains the Go functions, like decode & encode.
   WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject).then(
     result => {
       let mod = result.module;
@@ -52,17 +43,9 @@ window.mainRun = (baseURL: string, machineId: string, userId: string) => {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
-  const create10kbFile = (path: string, body: string): void =>
-    fetch("https://up.10kb.site/" + path, {
-      method: "POST",
-      body: body
-    })
-      .then(resp => resp.text())
-      .then(resp => { });
-
-
   const startSession = async (data: string) => {
     await sleep(3000);
+    //Decode function is written in Go.
     decode(data, (Sdp: any, tenKbSiteLoc: string, err: string) => {
       if (err != "") {
         console.log(err);
@@ -87,15 +70,20 @@ window.mainRun = (baseURL: string, machineId: string, userId: string) => {
 
   let TenKbSiteLoc: string | null = null;
 
+  // Create the new Terminal which will capture the whole page using the term fullscreen and fit.
   const term = new Terminal();
-  term.open(document.getElementById("terminal"));
+  term.open(document.getElementById("terminal") as HTMLElement);
   term.toggleFullScreen();
   term.fit();
   window.onresize = () => {
     term.fit();
   };
-  term.write("Welcome to the Peppermint(WebTTY) web client.\n\r");
 
+  // Initialization Message - when the WebTTY is loaded.
+  term.write("Welcome to the Peppermint(WebTTY) web client.\n\r");
+  term.write(`Trying to connect the ${machineId}.\n\r`);
+
+  // WebRTC Peer Connection
   let pc = new RTCPeerConnection({
     iceServers: [
       {
@@ -104,78 +92,95 @@ window.mainRun = (baseURL: string, machineId: string, userId: string) => {
     ]
   });
 
+  //Custom Log
   let log = (msg: string) => {
     term.write(msg + "\n\r");
   };
 
-  let sendChannel = pc.createDataChannel("data");
-  sendChannel.onclose = () => console.log("sendChannel has closed");
-  sendChannel.onopen = () => {
-    term.reset();
-    term.terminadoAttach(sendChannel);
-    sendChannel.send(JSON.stringify(["set_size", term.rows, term.cols]));
-    console.log("sendChannel has opened");
-  };
-  // sendChannel.onmessage = e => {}
+  // File Sharing 
+  function FileSharing() {
+    // TODO: Add the file sharing code.
+  }
 
+  // xterm terminal session
+  function TerminalSession() {
+    let sendChannel = pc.createDataChannel("data");
+    sendChannel.onclose = () => console.log("sendChannel has closed");
+    sendChannel.onopen = () => {
+      term.reset();
+      term.terminadoAttach(sendChannel);
+      sendChannel.send(JSON.stringify(["set_size", term.rows, term.cols]));
+      console.log("sendChannel has opened");
+    };
+  }
+
+
+  // User input
+  // NOTE - Need to figure it out how can we exit one option and then choose another option.
+  let currentChoice: boolean = false;
+  async function UserInput() {
+    await sleep(1000);
+    term.reset();
+    term.write("1. Terminal \n\r2. File Sharing\n\r");
+    term.on("data", data => {
+      if (!currentChoice) {
+        if (data == "1") {
+          try {
+            TerminalSession();
+          } catch (err) {
+            term.write("Unable to start the Terminal\n\r")
+          }
+        }
+        else if (data == "2") {
+          try {
+            console.log("file shraing");
+            return;
+          } catch (err) {
+            console.log("option2")
+          }
+        }
+        else {
+          try {
+            term.reset();
+            term.write("Incorrect Choice. Please Select between these \n\r1. Terminal \n\r2. File Sharing\n\r");
+            console.log("Incorrect Choice, Please try again.");
+            return;
+          } catch (err) {
+            console.log("aigag")
+          }
+        }
+        currentChoice = true
+      }
+    });
+  }
+  // WebRTC connection change events
   pc.onsignalingstatechange = e => log(pc.signalingState);
   pc.oniceconnectionstatechange = e => log(pc.iceConnectionState);
   pc.onicecandidate = event => {
     if (event.candidate === null) {
       if (TenKbSiteLoc == null) {
-        term.write(
-          "Answer created. Send the following answer to the host:\n\r"
-        );
+        // Encode function written in Go.
         encode(pc.localDescription.sdp, async (encoded: string, err: string) => {
           if (err != "") {
             console.log(err);
           }
           try {
             await sendDataToAPI(encoded);
-            term.write("Successfully sent the client token to the Backend Server");
+            UserInput();
           } catch (err) {
-            term.write(`Couldn't sent the Client token to the Backend Server - ${err}`)
+            term.write(`Couldn't sent the Client token to the Backend Server - ${err}\n\r`)
           }
-          // term.write(encoded);
-        });
-      } else {
-        term.write("Waiting for connection...");
-        encode(pc.localDescription.sdp, (encoded: string, err: string) => {
-          if (err != "") {
-            console.log(err);
-          }
-          create10kbFile(TenKbSiteLoc, encoded);
         });
       }
     }
   };
 
+  // WebRTC Event
   pc.onnegotiationneeded = e => console.log(e);
 
-  window.sendMessage = () => {
-    let message = document.getElementById("message").value;
-    if (message === "") {
-      return alert("Message must not be empty");
-    }
+  // Backend API call.
 
-    sendChannel.send(message);
-  };
-
-  let firstInput: boolean = false;
-  const urlData = window.location.hash.substr(1);
-  if (urlData != "") {
-    try {
-      waitForDecode();
-      firstInput = true;
-    } catch (err) {
-      console.log(err);
-    }
-  }
-
-  if (firstInput == false) {
-    term.write(`Tryiny to connect the ${machineId}.\n\r`);
-  }
-
+  // Send the Client Token / Answer to Backend Server
   async function sendDataToAPI(clientToken: string): Promise<any> {
     try {
       const response = await fetch(baseURL + `client_token?machine_id=${machineId}&client_token=${clientToken}`, {
@@ -197,6 +202,7 @@ window.mainRun = (baseURL: string, machineId: string, userId: string) => {
     }
   }
 
+  // Fetch the Host Token / Offer from the Backend Server
   async function getDataFromAPI(): Promise<any> {
     try {
       const response = await fetch(baseURL + `host_token?machine_id=${machineId}&user_id=${userId}`);
@@ -211,6 +217,7 @@ window.mainRun = (baseURL: string, machineId: string, userId: string) => {
     }
   }
 
+  // API call and filter the data.
   async function initiateSessionWithAPIData() {
     try {
       const data = await getDataFromAPI();
@@ -229,21 +236,7 @@ window.mainRun = (baseURL: string, machineId: string, userId: string) => {
   initiateSessionWithAPIData();
 }
 
-// term.on("data", async data => {
-//   if (!firstInput) {
-//     term.reset();
-//     try {
-//       startSession(data);
-//     } catch (err) {
-//       console.log(err);
-//       term.write(`There was an error with the offer: ${data}\n\r`);
-//       term.write("Try entering the message again: ");
-//       return;
-//     }
-//     firstInput = true;
-//   }
-// });
 
-
-// mainRun("http://localhost:2323/", "SD0451011", "vijay-barman")
+// Local run 
+mainRun("http://192.168.0.104:2323/", "SD0451001", "vijay-barman")
 
