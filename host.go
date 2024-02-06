@@ -170,9 +170,7 @@ func (hs *hostSession) onDataChannel() func(dc *webrtc.DataChannel) {
 	}
 }
 
-func (hs *hostSession) mustReadStdin() (string, error) {
-	// var input string
-	// fmt.Scanln(&input)
+func (hs *hostSession) waitClientToken() (string, error) {
 	<-ClientTokenUpdateChan // This will block until there's a value in the channel
 	sd, err := sd.Decode(ClientToken)
 	return sd.Sdp, err
@@ -222,7 +220,7 @@ func (hs *hostSession) run() (err error) {
 	if err = hs.init(); err != nil {
 		return
 	}
-	colorstring.Printf("[bold]Setting up a WebTTY connection.\n\n")
+	colorstring.Printf("[bold]Setting up a WebTTY connection.\n")
 	if hs.oneWay {
 		colorstring.Printf(
 			"Warning: One-way connections rely on a third party to connect. " +
@@ -234,15 +232,12 @@ func (hs *hostSession) run() (err error) {
 	}
 
 	// Output the offer in base64 so we can paste it in browser
-	colorstring.Printf("[bold]Connection ready. Here is your connection data:\n\n")
+	colorstring.Printf("[bold]Connection ready. \nSent the Host Token to Backend Server:\n")
 	HostToken = sd.Encode(hs.offer)
-	fmt.Printf("%s\n\n", sd.Encode(hs.offer))
-	colorstring.Printf(`[bold]Paste it in the terminal after the webtty command` +
-		"\n[bold]Or in a browser: [reset]https://maxmcd.github.io/webtty/\n\n")
+	colorstring.Printf("[bold]Waiting for the Client Token \n")
 	if hs.oneWay == false {
-		colorstring.Println("[bold]When you have the answer, paste it below and hit enter:")
-		// Wait for the answer to be pasted
-		hs.answer.Sdp, err = hs.mustReadStdin()
+		// Wait for the client token, which we will receive from the backend server ones any user is used our host token.
+		hs.answer.Sdp, err = hs.waitClientToken()
 		if err != nil {
 			log.Println(err)
 			return
